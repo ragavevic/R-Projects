@@ -1,0 +1,306 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(maptools)
+library(RColorBrewer)
+library(classInt)
+library(spdep)
+library(rgdal)
+library(pgirmess)
+```
+**PART 1: Spatial Autocorrelation**
+
+*1. Loading and Plotting*
+
+```{r}
+library(rgdal)
+SLCCT<- readOGR(dsn="/Users/ragave/Documents/R/GGRC42/tutorial_saltlake/", layer="SLC_CT2010")
+```
+
+*a)* The methods available for defining the class intervals are fixed, sd, equal, pretty, quantile, kmeans, hclust, bclust, fisher, jenks, dpih, or headtails. The method I choose for my plot was "jenks" because I wanted to look for clumps of data in order to demonstrate the different population density of hispanics in the census tract on the map. Also by looking at the histogram I noticed that the shape was not perfectly positively skewed suggesting that I can go forward with the jenks method.
+
+```{r}
+help("classIntervals")
+```
+
+*b)* The type of colour palette appropriate for my map is the sequential palettes. This palette is used fo ordered data that progresses from low to high. This is because we are trying to see the population density of Hispanic people in each area of the census tract. Therefore, we want to see which areas have a high vs. low population density of hispanics. The gradients help to represent the data, with dark colours representing high values and light colours representing low values. The specific palette that I choose was PuBu which is a sequential palette.
+
+```{r}
+help("brewer.pal")
+```
+
+**c)**
+```{r}
+nclr <- 5
+plotvar <- SLCCT$HIS_PCT
+class <- classIntervals(plotvar, nclr, style = "jenks",dataPrecision = 2)
+plotclr <- brewer.pal(nclr, "PuBu")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(SLCCT, col = colcode, border = "black", axes = T)
+title(main = "Census Tract of Hispanic Population Counts")
+legend("bottomleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.7)
+```
+
+*d)* Based on the descriptive statistics of the HIS_PCT variable we can see that the population density of hispanics in the census tract is not very high. The mean of the population density is 0.17 which aligns with the findings in the histogram and the choropleth. This suggests that the frequency of hispanics in the census tract is closer to 0.1. The choropleth map suggests that there are not many hispanics across the census tract. They predominately reside in the upper left corner of Salt Lake County with only a few areas have a very high population density of Hispanics. The minimum and maximum values also align with the chloropeth map, with the minimum referring to the smallest density population value in the map and the maximum referring to the largest density population value in the map.
+
+```{r}
+summary(plotvar)
+```
+```{r}
+hist(plotvar)
+```
+
+*2. Working with Neighbour Lists* 
+
+*a)* Rook - when only common sides of the polygons are considered to define the neighbour relation
+Queen - includes common vertices
+```{r}
+help("poly2nb")
+```
+```{r}
+SLCnb_rook<-poly2nb(SLCCT, queen=FALSE)
+SLCnb_queen<-poly2nb(SLCCT, queen=TRUE)
+class(SLCnb_rook)
+```
+
+Queen-style census tract contiguities shown in black. Rook-style contiguity differences shown in red.
+```{r}
+saltlake <- st_read("/Users/ragave/Documents/R/GGRC42/tutorial_saltlake/SLC_CT2010.shp")
+coords <- coordinates(SLCCT)
+dxxx <- diffnb(SLCnb_rook, SLCnb_queen)
+plot(st_geometry(saltlake), border="grey")
+plot(SLCnb_queen, coords, add=TRUE, col="black")
+plot(dxxx, coords, add=TRUE, col="red")
+```
+
+*b)* The histograms show the number of observations for each value of the cardinality of neighbours (i.e., how many observations have the given number of neighbours).
+```{r}
+hist(card(SLCnb_queen))
+```
+The histogram of cardinality for queen the frequent number of neighbours is 6. The maximum number of neighbours according to the graph is 14. 
+
+```{r}
+hist(card(SLCnb_rook))
+```
+The histogram of cardinality for rook the frequent number of neighbours is 4. The maximum number of neighbours is 13. 
+
+```{r}
+summary(SLCnb_queen)
+```
+```{r}
+summary(SLCnb_rook)
+```
+
+*c)* Based on the map that was created it is evident that the queen neighbours list have more connections than the differentiated neighbour list (rook). This is due to the fact that queen defines neighbours by the existence of common edge points and vertices, which rooks defines neighbours only by the existence of common edge points. The summary report shows that there are 211 area units in Salt Lake County. Based on the descriptive statistics, the number of non-zero links for queen, which is 1366, is a lot higher than the number of non-zero links for rook, which is 1094. This suggests that there are more connections made in the queens neighbour list than the rook neighbour list. Based on the histogram and the map it is apparent that rooks frequently has 4 neighbours while queens has 6 neighbours.
+
+*3. Creating Weight Matrices from Neighbour Lists*
+
+*a)* The three components of listw are style, neighbours, and weights.  
+```{r}
+help(nb2listw)
+```
+
+*b)* The weights for the W listw objects add up to +1. This is because weights for each areal entity are standardized to sum to 1. The weight for the first observation of SLCnb_rook_W (W listw object for rook), is 0.167 six times. The weight for the first observation for SLCnb_queen_w (W listw object for queen) is 0.111 nine times. The weights for links with few neighbours are larger than weights for links with many neighbours. However the weights for the B listw do not add up to 1, rather each weight is assigned a value of 1. This is because the binary style (B) The weight for the first observation for SLCnb_rook_B (B listw object for rook) is 1 six times. The weight for the first observation for SLCnb_queen_B (B listw object for queen) is 1 nine times. This is because the binary style retains a weight of unity (1) for each neighbour relationship. Therefore, the sums of weights for areas differ according to the number of neighbours areas have. Therefore, both styles show the same number of neighbours in the weights observation but the values of the weights differ.
+```{r}
+SLCnb_rook_W<-nb2listw(SLCnb_rook)
+SLCnb_queen_W<-nb2listw(SLCnb_queen)
+print(SLCnb_rook_W)
+SLCnb_rook_W$weights[1]
+```
+
+```{r}
+print(SLCnb_queen_W)
+SLCnb_queen_W$weights[1]
+```
+
+```{r}
+SLCnb_rook_B<-nb2listw(SLCnb_rook, style = "B")
+SLCnb_queen_B<-nb2listw(SLCnb_queen, style = "B")
+print(SLCnb_rook_B)
+SLCnb_rook_B$weights[1]
+```
+```{r}
+print(SLCnb_queen_B)
+SLCnb_queen_B$weights[1]
+```
+
+*4. Global Moran's I*
+#Correlation score between -1 and 1
+#1 determines perfect positive spatial autocorrelation (so our data is clustered)
+#0 identifies the data is randomly distributed
+#-1 represents negative spatial autocorrelation (so dissimilar values are next to each other)
+
+*a)* 
+```{r}
+moran_rookW<-moran.test(SLCCT$HIS_PCT,listw=SLCnb_rook_W)
+moran_queenW<-moran.test(SLCCT$HIS_PCT,listw=SLCnb_queen_W)
+```
+```{r}
+moran_rookW
+```
+ 
+```{r}
+moran_queenW
+```
+
+```{r}
+moran_rookB<-moran.test(SLCCT$HIS_PCT,listw=SLCnb_rook_B)
+moran_queenB<-moran.test(SLCCT$HIS_PCT,listw=SLCnb_queen_B)
+```
+```{r}
+moran_rookB
+```
+
+```{r}
+moran_queenB
+```
+Based on the Moran I statistic we can determine that the Hispanic population is positively autocorrelated in Salt Lake City. A positive spatial autocorrelation occurs when the Moran's I is close to +1 suggesting that the values cluster together. The Moran I statistic for all four tests are positive and close to +1. The Moran I statistic for the W style is 0.779 for queen and 0.800 for rook. The Moran I statistic for the B style is 0.737 for queen and 0.786 for rook. The Moran I statistic is a high enough value to show clustering. The p-value, which is less than 0.05 for all four tests, can also be used to measure the statisitcal significance of the model. For all four tests the Moran's I statistic demonstrates that there is high spatial autocorrelation and therefore enough polygons to do a spatial analysis on. However, it should be noted that the Moran's I for the W style for both rook and queen is higher than the Moran's I for the B style for both rook and queen. Further investigation is required to find the reasoning for the differing Moran's I based on listw style.
+
+*b)* Spatial correlograms examines patterns of spatial autocorrelation in the data. The 5 red dots on the left side of the graph are statistically significant distance classes with the p-values being less than 0.05. The correlogram shows that similar values are clustered together at shorter distances and as the distances increase dissimilar values are closer together. 
+```{r}
+corD<-correlog(coordinates(SLCCT),SLCCT$HIS_PCT,method="Moran")
+plot(corD)
+```
+```{r}
+corD
+```
+
+
+**2. Spatial Econometrics**
+
+**1. Load and Describe the Data Set*
+
+Based on the descriptive statistics and plots it can be seen that crime has a negative correlation with median income levels and median housing value. Income has a positive correlation with median housing value and negative corrrelation with crime. Housing value has a positive correlation with median income level and negative correlation with crime. These correlations make logical sense. Based on the boxplot we can see that crime is normally distributed. Normality is not present in the median income levels (INC) and median housing values (HOVAL) box plots. The boxplots for INC and HOVAL are skewed to the right and outliers are present. Based on the choropleth map of crime in columbus, the highest density of crime is in the centre of the map. The density of crime decreases as you get further from the centre of the columbus. It can be seen that the density of median income and median housing value is lower in areas where the density of crime is high. The density of median income is higher near the edges of the map suggesting that those who live further from the centre of the city tend to make more money. These areas correlate with the high density areas of median housing value.
+
+```{r}
+columbus <- readOGR(dsn="/Users/ragave/Documents/R/GGRC42/tutorial_columbus/", layer="columbus")
+```
+```{r}
+X<-as.data.frame(cbind(columbus$CRIME,columbus$INC, columbus$HOVAL))
+colnames(X) <- c( 'CRIME', 'INC', 'HOVAL')
+cor(X)
+```
+
+```{r}
+summary(X)
+```
+```{r}
+plot(X)
+```
+```{r}
+boxplot(X)
+```
+
+```{r}
+nclr<-5
+plotvar <- columbus$CRIME
+class <- classIntervals(plotvar, nclr, style = "quantile",dataPrecision = 0)
+plotclr <- brewer.pal(nclr, "Reds")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(columbus, col = colcode, pch = 19, axes = T,cex=1.5)
+title(main = "Thefts Per 1000 Households")
+legend("topleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.8)
+```
+
+```{r}
+nclr<-5
+plotvar <- columbus$INC
+class <- classIntervals(plotvar, nclr, style = "quantile",dataPrecision = 0)
+plotclr <- brewer.pal(nclr, "Reds")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(columbus, col = colcode, pch = 19, axes = T,cex=1.5)
+title(main = "Median Income Per 1000 Households")
+legend("topleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.8)
+```
+```{r}
+nclr<-5
+plotvar <- columbus$HOVAL
+class <- classIntervals(plotvar, nclr, style = "quantile",dataPrecision = 0)
+plotclr <- brewer.pal(nclr, "Reds")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(columbus, col = colcode, pch = 19, axes = T,cex=1.5)
+title(main = "Median Housing Value Per 1000 Households")
+legend("topleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.8)
+```
+
+*2. Perform Basic Spatial Statistics*
+
+Based on the queen contiguity neighbour list on average the number of neighbours each zone has is 5. The minimum number of connections made in the neigbour list is 2 with 5 least connected regions. The maximum number of connections made in the neighbour list is 10 with 1 most connected region. The Moran's I for crime is 0.500. This demonstrates low positive spatial autocorrelation because there are significantly less polygons to actually run a spatial analysis on. However, the value is high enough to show that there is some clustering. The Moran's I seems reasonable due to the visible clustering that is seen on the choropleth map of crime in colombus, with higher densities clustered in the middle of the map and lower densities clustered close to the edge of the map. The Moran's I for median household income is 0.416. This also demonstrate a low positive spatial autocorrelation because again there are significantly less polygons to actually run a spatial analysis on. The value is high enough to show some clustering but not a lot. The Moran's I seems reasonable due to some visible clustering that can be seen on the choropleth map. Clustering of high densities can be seen close to the edge of the map. The Moran's I for median housing value is 0.180. This is weak positive spatial autocorrelation. Since the Moran's I is close to 0 it indicates almost no autocorrelation. This can be due to the outliers that were seen in the boxplot. The value is very low which means that there is not very much clustering at all. The Moran's I seems reasonable due to the lack of visible clustering in the accompanying choropleth map.
+
+```{r}
+columbus_queen_nb<-poly2nb(columbus, queen=TRUE)
+summary(columbus_queen_nb)
+```
+```{r}
+colqueen<-nb2listw(columbus_queen_nb, style="W")
+```
+
+```{r}
+moran.test(columbus$CRIME, colqueen)
+```
+
+```{r}
+moran.test(columbus$INC, colqueen)
+```
+
+```{r}
+moran.test(columbus$HOVAL, colqueen)
+```
+  
+*3. Create an OLS Model for Crime*
+
+Based on the OLS model for crime is clear that both variables (INC and HOVAL) are significant in the regression. They both have a negative effect on crime as the intercepts are respectively -1.60 for INC and -0.27 for HOVAL. The adjusted R-squared is 0.53 (53%), therefore the regression model is a moderate fit. The p-value of the F-statistic, which is less than 0.05, demonstrates that crime really does depend on median income and median housing value. The Moran's I for the residuals of the model is 0.22. This demonstrates weak positive spatial autocorrelation, however the model is significant because its p-value is less than 0.05. Therefore, there is spatial dependency in the model. Therefore, the model is valid. 
+
+```{r}
+olsres<-lm(columbus$CRIME~columbus$INC+columbus$HOVAL)
+moran.test(resid(olsres), colqueen)
+```
+```{r}
+summary(olsres)
+```
+
+*4. Create a spatially lagged Dependent Model*
+```{r}
+wy <- lag(colqueen, columbus$CRIME)
+olsres2<-lm(columbus$CRIME~wy+columbus$INC+columbus$HOVAL)
+moran.test(resid(olsres2), colqueen)
+summary(olsres2)
+```
+```{r}
+slres<-lagsarlm(columbus$CRIME~columbus$INC+columbus$HOVAL, listw=colqueen)
+summary(slres)
+moran.test(resid(slres), colqueen)
+```
+
+Based on the Moran's I for residuals, the OLS No Lag model has the highest Moran's I. Therefore, there is weak positive spatial autocorrelation but there is sign of some clustering. The Moran's I for the ML with lag model is close to 0 and suggests that there is no clustering. The Moran's I for the OLS with lag model suggests that there is negative spatial autocorrelation therefore the values are dispersed. All 3 models variables (HOVAL, INC, WCRIME) are significant with a p-value of less than 0.05. However, the most valid model based on their coefficient values, significance, goodness-of-fit, and spatial autocorrelation is the OLS No Lag model.
+
+The difference between the 1st and 2nd model is that the adjusted R-squared for the second model is higher, the adjusted R-squared being 0.62 instead of 0.53. However, it still suggests that the regression model is a moderate fit. The Moran's I for the 2 models are very different. The Moran's I, 0.2221, for the OLS no lag model demonstrates a weak positive spatial autocorrelation. The Moran's I, -0.0184, for the OLS with lag model demonstrate a negative spatial autocorrelation. It should be noted that regression parameters may be biased in the OLS no lag model and standard errors should not be trusted.
+
+The difference between the 2nd and 3rd model is that the Moran's I for the 2 models are very different. The Moran's I for the OLS with lag model is -0.0184 suggesting that there is negative spatial autoorrelation. The Moran's I for the maximum likelihood with lag model is 0.0331 (close to 0) suggesting that the data is randomly clustered. 
+
+*5. Create a Spatially Lagged Error Model for Crime*
+
+In comparing the OLS No Lag and the Error Lag models it is clear that the OLS No Lag model are both significant. This is because both models variables (INC and HOVAL) have a significant effect on crime with the P-value being less than 0.05. In comparing the ML lagged dependent and the ML error models, using the value of the log likehood, which is lower for the ML error model (-183.749), we should go with the spatial lag model. It should be noted the both ML models are significant but the spatial lag model is the most significant.
+
+```{r}
+errorres<-errorsarlm(columbus$CRIME~columbus$INC+columbus$HOVAL, listw=colqueen)
+summary(errorres)
+```
+```{r}
+moran.test(resid(errorres), colqueen)
+```
+
+*6. Choose Between Several Valid Models*
+
+Based on the flowchart both the LM-error and LM-lag model are significant because their p-value's are both less than 0.05. Because both are significant we must use robust tests. Based on the robust tests the RLMlag model is significant, p-value being 0.05, while the RLMerr model is not, p-value being 0.83. Because the robust LM-lag test is more significant that the robust LM-err test, the more likely specification is the spatially lagged dependent model.
+
+```{r}
+res<-lm.LMtests(olsres, listw=colqueen, test="all")
+tres<-t(sapply(res, function(x) c(x$statistic, x$parameter, x$p.value)))
+colnames(tres)<-c("Statistic", "df", "p-value")
+printCoefmat(tres)
+```
+

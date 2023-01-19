@@ -1,0 +1,191 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(dplyr)
+library(stats)
+library(e1071)
+library(ggplot2)
+library(forecast)
+library(psych)
+library(tidyr)
+library(tidyverse)
+library(modelr)
+library(broom)
+```
+
+
+```{r}
+library(readr)
+lifexpec <- read_csv("Downloads/Life Expectancy Data.csv")
+names(lifexpec)<-make.names(names(lifexpec),unique = TRUE)
+lifexpec
+```
+
+```{r}
+countrycount <- data.frame(table(lifexpec$Country))
+is.na(lifexpec)
+```
+
+```{r}
+prelimlifexpect <- na.omit(lifexpec)
+
+##filter final data set to be processed
+flifexpect <- left_join(prelimlifexpect, countrycount, by = c("Country" = "Var1"))
+
+sum(is.na(flifexpect))
+```
+
+```{r}
+flifexpect
+```
+
+```{r}
+set.seed(123)
+inds <- sample(1:nrow(flifexpect), 0.80*nrow(flifexpect)) 
+tr_df <- flifexpect[inds,] 
+te_df <- flifexpect[-inds,]
+```
+
+```{r}
+res <- lm(Life.expectancy ~ . - Country, data = tr_df)
+summary(res)
+```
+
+```{r}
+library(caret)
+# Define training control
+set.seed(123) 
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+model <- train(Life.expectancy ~ .-Country, data = te_df, method = "lm",
+               trControl = train.control)
+# Summarize the results
+print(model)
+```
+
+```{r}
+library(tidyverse)
+# Fit the model on the training set
+set.seed(123)
+model <- train(
+  Life.expectancy ~ .-Country, data = te_df, method = "knn",
+  trControl = trainControl("cv", number = 10),
+  preProcess = c("center","scale"),
+  tuneLength = 10
+  )
+# Plot model error RMSE vs different values of k
+plot(model)
+# Best tuning parameter k that minimize the RMSE
+model$bestTune
+# Make predictions on the test data
+predictions <- model %>% predict(te_df)
+head(predictions)
+# Compute the prediction error RMSE
+RMSE <- RMSE(predictions, te_df$Life.expectancy)
+```
+
+```{r}
+RMSE
+```
+
+```{r}
+install.packages(rpart)
+library(rpart)
+tree1 <- rpart(Life.expectancy ~ Year + Status + Adult.Mortality + infant.deaths + Alcohol + percentage.expenditure + Hepatitis.B + Measles + BMI + under.five.deaths + Polio + Total.expenditure + Diphtheria + HIV.AIDS + GDP + Population + thinness..1.19.years + thinness.5.9.years + Income.composition.of.resources + Schooling + Freq, data = tr_df) 
+plot(tree1, uniform = TRUE) 
+text(tree1, cex = .7)
+```
+
+```{r}
+# Fit the model on the training set
+set.seed(123)
+model <- train(
+  Life.expectancy ~ Year + Status + Adult.Mortality + infant.deaths + Alcohol + percentage.expenditure + Hepatitis.B + Measles + BMI + under.five.deaths + Polio + Total.expenditure + Diphtheria + HIV.AIDS + GDP + Population + thinness..1.19.years + thinness.5.9.years + Income.composition.of.resources + Schooling + Freq, data = tr_df, method = "rpart",
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 10
+  )
+# Plot model error vs different values of
+# cp (complexity parameter)
+plot(model)
+summary(model)
+# Print the best tuning parameter cp that
+# minimize the model RMSE
+rmsedt <- model$bestTune
+```
+```{r}
+rmsedt
+```
+
+```{r}
+# Plot the final tree model
+par(xpd = NA) # Avoid clipping the text in some device
+plot(model$finalModel)
+text(model$finalModel, digits = 3)
+```
+
+```{r}
+# Decision rules in the model
+model$finalModel
+# Make predictions on the test data
+predictions <- model %>% predict(te_df)
+head(predictions)
+# Compute the prediction error RMSE
+RMSE(predictions, te_df$Life.expectancy)
+```
+
+```{r}
+data <- transform(flifexpect, 
+                  Year=as.factor(Year), 
+                  Status=as.factor(Status), 
+                  Life.expectancy=as.integer(Life.expectancy),
+                  Adult.Mortality=as.integer(Adult.Mortality), 
+                  infant.deaths=as.integer(infant.deaths), 
+                  Alcohol=as.integer(Alcohol), 
+                  percentage.expenditure=as.integer(percentage.expenditure), 
+                  Hepatitis.B=as.integer(Hepatitis.B), 
+                  Measles=as.integer(Measles), 
+                  BMI=as.integer(BMI), 
+                  under.five.deaths=as.integer(under.five.deaths), 
+                  Polio=as.integer(Polio), 
+                  Total.expenditure=as.integer(Total.expenditure), 
+                  Diphtheria=as.integer(Diphtheria), 
+                  HIV.AIDS=as.integer(HIV.AIDS), 
+                  GDP=as.integer(GDP), 
+                  Population=as.integer(Population), 
+                  thinness..1.19.years=as.integer(thinness..1.19.years), 
+                  thinness.5.9.years=as.integer(thinness.5.9.years), 
+                  Income.composition.of.resources=as.integer(Income.composition.of.resources), 
+                  Schooling=as.integer(Schooling), 
+                  Freq=as.integer(Freq)
+                  )
+
+inds <- sample(1:nrow(flifexpect), 0.80*nrow(flifexpect)) 
+training_df <- data[inds,] 
+test_df <- data[-inds,]
+```
+
+```{r}
+colnames(tr_df)
+```
+
+```{r}
+model1 <- randomForest(Life.expectancy ~ Year + Status + Adult.Mortality + infant.deaths + Alcohol + percentage.expenditure + Hepatitis.B + Measles + BMI + under.five.deaths + Polio + Total.expenditure + Diphtheria + HIV.AIDS + GDP + Population + thinness..1.19.years + thinness.5.9.years + Income.composition.of.resources + Schooling + Freq, data=training_df, importance = TRUE)
+model1
+```
+
+```{r}
+model2 <- randomForest(Life.expectancy ~ Year + Status + Adult.Mortality + infant.deaths + Alcohol + percentage.expenditure + Hepatitis.B + Measles + BMI + under.five.deaths + Polio + Total.expenditure + Diphtheria + HIV.AIDS + GDP + Population + thinness..1.19.years + thinness.5.9.years + Income.composition.of.resources + Schooling + Freq, data=training_df, ntree = 500, mtry = 8, importance = TRUE)
+model2
+```
+
+```{r}
+model2$mse[length(model2$mse)]
+sqrt(model2$mse[length(model2$mse)])
+```
+```{r}
+predValues <- predict(model2,test_df)
+sqrt(mean((test_df$Life.expectancy -predValues)^2))
+```
+

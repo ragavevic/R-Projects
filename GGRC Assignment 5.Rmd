@@ -1,0 +1,376 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(gridExtra)
+library(dendextend)
+library(factoextra)
+```
+
+
+```{r}
+library(readxl)
+SESdep <- read_excel("~/Desktop/SESdep.xlsx")
+SESdep
+```
+
+The dataset being used for the analysis contains variables related to socioeconomic status of Toronto neighbourhoods.
+
+#start by scaling the data 
+#rows are observations and columns are variables 
+#any missing value in the data must be removed or estimated
+#the data must be standardized (i.e., scaled) to make variables comparable. Standardization consists of transforming the variables such that they have mean zero and standard deviation one.
+
+```{r}
+SES <- na.omit(SESdep)
+rownames(SES) <- SES$Neighbourhoods
+mat <- data.matrix(SES)
+mat <- scale(mat[,-1]) #The -1 chooses every column except the first one where the row names are
+head(mat)
+```
+
+```{r}
+distance <- get_dist(mat)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+The distance matrix illustrates which neighbourhoods have large dissimilarities (red) versus the neighbourhoods that are similar (blue).
+
+**K-Means Clustering**
+
+#use the k-means function, specifying 2-cluster solution, and 25 random seeds
+
+In order to start off I will group the data into two clusters.
+
+```{r}
+k2 <- kmeans(mat, centers=2, nstart=25)
+print(k2)
+```
+After printing the results the groupings resulted in 2 cluster sizes of 109 and 31. 
+
+#visualize the clusters in a scatterplot 
+```{r}
+fviz_cluster(k2, data = mat)
+```
+
+Because there are so many neighbourhoods, looking at the illustration of clusters have two clusters is not sufficient enough to explain the differences between the clusters. It looks like more "wealthier/upper middle-class" neighbourhoods are placed in the first cluster, whereas "lower middle class/low income neighbourhoods" are placed in the second cluster. 
+
+#different values of k 
+#examine the differences in the results 
+```{r}
+k3 <- kmeans(mat, centers = 3, nstart = 25)
+k4 <- kmeans(mat, centers = 4, nstart = 25)
+k5 <- kmeans(mat, centers = 5, nstart = 25)
+
+#plots to compare
+p1 <- fviz_cluster(k2, geom = "point", data = mat) + ggtitle("k = 2")
+p2 <- fviz_cluster(k3, geom = "point", data = mat) + ggtitle("k = 3")
+p3 <- fviz_cluster(k4, geom = "point", data = mat) + ggtitle("k = 4")
+p4 <- fviz_cluster(k5, geom = "point", data = mat) + ggtitle("k = 5")
+
+grid.arrange(p1, p2, p3, p4, nrow=2)
+```
+
+Looking at the visualization, only the k=2 and k=3 graph show no signs of overlap. I would prefer to go with 3 clusters in order to explain the within-cluster similiarities and between-cluster disimilarities. 
+
+#idea is to compute k-means clustering using different values of clusters k 
+#the within sum of squares is drawn according to the number of clusters
+#the location of a bend (knee) in the plot is generally considered as an indicator of the appropriate number of clusters
+```{r}
+fviz_nbclust(mat, kmeans, method = "wss", nstart=25)
+```
+
+The plot above represents the variance within clusters. It decreases as k increases, but an elbow can be seen at k=3. This bend indicates that additional clusters beyond the second have little value.
+
+#Average Silhouette Method 
+#measures the quality of a clustering. Determines how well each object lies within its cluster
+#computes the average silhouette of observations for different values of k
+#the optimal number of clusters k is the one that maximizes the average silhoutte over a range of possible values for k
+
+```{r}
+#function to compute average sihlouette for k clusters
+library(cluster)
+avg_sil <- function(k) {
+  km.res <- kmeans(mat, centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(mat))
+  mean(ss[,3])
+}
+
+#compute and plot wss for k=2 to k=15
+k.values <- 2:15
+
+#extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+     type = "b", pch=19, frame=FALSE, 
+     xlab = "Number of clusters K", 
+     ylab = "Average Silhouettes")
+```
+```{r}
+fviz_nbclust(mat, kmeans, method = "silhouette")
+```
+
+The results show that 2 clusters maximize the average silhouette values with 3 clusters coming in as the second optimal number of clusters. 
+
+Because both methods suggest that 3 is the number of optimal clusters I will use 3 clusters to perform the final analysis.
+
+```{r}
+# Compute k-means clustering with k = 3
+final <- kmeans(mat, 3, nstart = 25)
+print(final)
+```
+After printing the results the groupings resulted in 3 cluster sizes of 15, 47, and 78. 
+
+```{r}
+fviz_cluster(final, data=mat)
+```
+
+The illustration using k=3 seems to show a much clearer picture of the Toronto neighbourhoods based on SES variables. It looks like the first cluster is related to low-income neighbourhoods, the second cluster is related to middle class neighbourhoods, and the third cluster is related to upper class neighbourhoods. 
+
+```{r}
+SES %>%
+  mutate(Cluster = final$cluster) %>%
+  group_by(Cluster) %>%
+  summarise_all("mean")
+```
+
+The descriptive statistics demonstrate that the first luster has the highest mean for the variables related to socioeconomic deprivation while the third cluster has the lowest mean. This makes sense as people who live in wealthier neighbourhoods typically do not have things like a low income or high unemployment rates.
+
+```{r}
+library(rgdal)
+library(sp)
+library(sf)
+
+#clustering vectors to add to the spatial dataframe (spdf)
+neighsp <- readOGR(dsn="/Users/ragave/Documents/R/GGRC42/Neighbourhoods/", layer="Neighbourhoods")
+clusterv <- as.data.frame(final[1])
+clusterv <- rownames_to_column(clusterv)
+clusterv <- transform(clusterv, cluster = as.numeric(cluster))
+clusterv
+neighsp$FIELD_7 <- gsub("[0-9]+", "", neighsp$FIELD_7)
+neighsp$FIELD_7 <- gsub("[()]", "", neighsp$FIELD_7)
+neighsp$FIELD_7 <- gsub("\\s+$", "", neighsp$FIELD_7)
+neighsp$FIELD_7 <- as.character(neighsp$FIELD_7) 
+clusterv$rowname
+```
+```{r}
+neighcluster <- sp::merge(neighsp, clusterv, by.x="FIELD_7", by.y="rowname")
+neighcluster$cluster
+```
+
+```{r}
+library(maptools)
+library(RColorBrewer)
+library(classInt)
+library(spdep)
+library(rgdal)
+library(pgirmess)
+library(ggplot2)
+
+nclr <- 3
+plotvar <- neighcluster$cluster
+class <- classIntervals(plotvar, nclr, style = "jenks",dataPrecision = 2)
+plotclr <- brewer.pal(nclr, "PuBu")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(neighcluster, col = colcode, border = "black", axes = T)
+title(main = "Map of SES deprivation variables using KMeans")
+legend("bottomleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.7)
+```
+
+Cluster 1
+Lower/Middle Class: The neighbourhoods that are placed in cluster 1 profiles consist of people with low incomes, little to no education, and predominately do not speak English or French. A lot of immigrants and visible minorities reside in these neighbourhoods compared to the neighbourhoods apart of the second and third cluster. The reason why a lot of low income families and new immigrants reside in these neighbourhoods is because housing is a lot cheaper since there are mainly apartment buildings in these neighbourhoods. A neighbourhood that stood out that is apart of this cluster is Glenfield-Jane Heights which is known to be one of the most dangerous neighbourhoods in Toronto. This results in the homes in this neighbourhood to be cheaper, thus making it more affordable neighbourhood to those who have a lower income. 
+
+Cluster 2
+Upper Middle Class: The neighbourhoods that are placed in cluster 2 profiles consist of people who have an average income, they have some education, and for the most part speak either English or French. Although there are immigrants who live in these areas (not as many as in cluster 1) it seems as though many of them have enough money to live in a decent neighbourhood. This neighbourhood is average, their relation to SES deprivation variables are not high enough to be placed in cluster 1 but definitely not low enough to be placed in cluster 3.
+
+Cluster 3 
+Upper Class: The neighbourhoods that are placed in cluster 3 profiles consist of people who be educated and have a high income. Something notable about this neighbourhood is that the average of immigrants and visible minorities is lower than the other 2 clusters. This cluster is full of more prestigious neighbourhoods in which more wealthier people live. A neighbourhood that stood out that is apart of this cluster is Bridle Path. This is a very prestigious neighbourhood consisting of multimillion dollar mansions. Canadian legend, Drake, lives in a 21 million dollar home in the Bridle Path. Other celebrities are also known for living in this neighbourhood.
+
+Something worth noting in the map is that some middle class neighbourhoods are surrounded by upper class neighbourhoods. 
+
+**Hierarchical Clustering**
+```{r}
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(dendextend)
+```
+
+*Agglomerative Hierarchial Clustering*
+#compute the dissimilarity values with dist and then feed these variables into hclust and specify the agglomeration method to be use (i.e., complete, average, single, ward.D)
+
+```{r}
+# Dissimilarity matrix
+d <- dist(mat, method = "euclidean")
+
+# Hierarchical clustering using Complete Linkage
+hc1 <- hclust(d, method = "complete")
+
+# Plot the obtained dendogram
+plot(hc1, cex = 0.6, hang = -1)
+```
+
+Looking at the dendogram it looks like there are 3 clusters.
+
+#agglomerative coefficient, which measures the amount of clustering structure found (values closer to 1 suggest strong clustering structure)
+
+```{r}
+# Compute with agnes 
+hc2 <- agnes(mat, method = "complete")
+
+#Agglomerative coefficient 
+hc2$ac
+```
+
+#find certain hierarchial clustering methods that can identify stronger clustering structures 
+```{r}
+# methods to assess
+m <- c("average", "single", "complete", "ward")
+names(m) <- c("average", "single", "complete", "ward")
+
+#function to compute coefficients 
+ac <- function(x) {
+  agnes(SES, method = x)$ac
+}
+
+map_dbl(m, ac)
+```
+Ward's method identifies the strongest clustering structure of the four methods assessed
+
+```{r}
+hc3 <- agnes(SES, method = "ward")
+pltree(hc3, cex = 0.6, hang = -1, main = "Dendogram of agnes")
+rect.hclust(hc3, 4)
+```
+
+The dendogram using the agglomerative method shows that there are 4 clusters.
+
+*Diversive Hierarchical Clustering*
+```{r}
+#compute divisive hierarchical clustering 
+hc4 <- diana(mat)
+
+# divise coefficient; amount of clustering structure found
+hc4$dc
+
+#plot dendogram
+pltree(hc4, cex = 0.6, hang = -1, main = "Dendogram of diana")
+```
+
+Unlike the dendogram from using the agglomerative hieratchical clustering method, the diversal hierarchical clustering dendogram only shows 2 clusters.
+
+```{r}
+#Ward's method
+hc5 <- hclust(d, method = "ward.D2")
+
+# Cut tree into 4 groups 
+sub_grp <- cutree(hc5, k = 2)
+
+#Number of members in each cluster
+table(sub_grp)
+```
+
+```{r}
+SES %>%
+  mutate(cluster = sub_grp) %>%
+  head
+```
+
+```{r}
+plot(hc5, cex = 0.2)
+rect.hclust(hc5, k = 2, border = 2:5)
+```
+
+For the final dendogram I am going to use Ward's method as it had the highest clustering structure of the four methods. In order to know how many clusters to cut the tree into I used the elbow method. Since the elbow was at 2 I decided to draw the border around 2 clusters. 
+
+```{r}
+fviz_cluster(list(data = mat, cluster = sub_grp))
+```
+
+The vizualization of the hierarchial method is overlapping because this type of vizualization is not typically used for this method.
+
+#Elbow method
+
+```{r}
+fviz_nbclust(mat, FUN = hcut, method = "wss")
+```
+
+```{r}
+clusterhi <- as.data.frame(sub_grp)
+clusterhi <- rownames_to_column(clusterhi)
+clusterhi <- transform(clusterhi, sub_grp = as.numeric(sub_grp))
+clusterhi
+```
+```{r}
+neighcluster <- sp::merge(neighsp, clusterhi, by.x="FIELD_7", by.y="rowname")
+neighcluster$sub_grp
+```
+```{r}
+nclr <- 2
+plotvar <- neighcluster$sub_grp
+class <- classIntervals(plotvar, nclr, style = "jenks",dataPrecision = 2)
+plotclr <- brewer.pal(nclr, "PuBu")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(neighcluster, col = colcode, border = "black", axes = T)
+title(main = "Map of SES deprivation variables using Hierarchical")
+legend("bottomleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.7)
+```
+
+Because the map only consists of 2 clusters it is difficult to give a detailed explanation of how the clusters are different from each other. It looks as though most of the neighbourhoods have been placed in the second cluster meaning that it is now a mix of both upper and middle class neighbourhoods.
+
+**DBSCAN**
+```{r}
+library(dbscan)
+```
+
+The value of k that I chose was 3 because it is the k value that I chose for the kmeans method. I chose the eps parameter value to be 4.1 because that is where the line starts to become asymptotic.
+
+```{r}
+kNNdistplot(mat, k=3)
+abline(h=4.1, lty=2)
+```
+
+```{r}
+res.db <- dbscan(mat, eps = 4, MinPts = 3)
+fviz_cluster(res.db, mat, geom = "point")
+```
+
+The visualization shows that there is one cluster. The black points are outliers.
+
+```{r}
+SES %>%
+  mutate(Cluster = res.db$cluster) %>%
+  group_by(Cluster) %>% 
+  summarise_all("mean")
+```
+
+The neighbourhoods with a lower average related to SES deprivation variables have all been clustered into the first cluster.
+
+```{r}
+clusterdbscan <- as.data.frame(res.db[1])
+clusterdbscan <- rownames_to_column(clusterdbscan)
+names(clusterdbscan)[2] <- "dbcluster"
+clusterdbscan <- transform(clusterdbscan, dbcluster = as.numeric(dbcluster))
+clusterdbscan
+```
+```{r}
+neighcluster <- sp::merge(neighsp, clusterdbscan, by.x="FIELD_7", by.y="rowname")
+res.db$cluster
+```
+
+```{r}
+nclr <- 2
+plotvar <- res.db$cluster
+class <- classIntervals(plotvar, nclr, style = "jenks",dataPrecision = 2)
+plotclr <- brewer.pal(nclr, "PuBu")
+colcode <- findColours(class, plotclr, digits = 3)
+plot(neighcluster, col = colcode, border = "black", axes = T)
+title(main = "Map of SES deprivation variables using DBSCAN")
+legend("bottomleft", legend = names(attr(colcode, "table")),fill = attr(colcode, "palette"), cex = 0.7)
+```
+
+This map is not a good representation of the between cluster differences and within cluster similarities. All but a few of the neighbourhoods (the outliers) are placed in cluster 1.

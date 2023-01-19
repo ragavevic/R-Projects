@@ -1,0 +1,168 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(factoextra)
+```
+*PART 1: PCA*
+
+**1) Creating a dataframe**
+```{r}
+library(readxl)
+neighbourhoods <- read_excel("~/Desktop/neighbourhoods.xlsx")
+neighbourhoods
+```
+```{r}
+neighbourhood <- neighbourhoods[-c(2,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59)]
+neighbourhood
+```
+
+```{r}
+summary(neighbourhood)
+```
+
+In my selection of variables for my new data frame I choose 3 characerisics that were related to socioeconomic status (SES). These characteristics are related to income, minority visibility, and education. I choose 2 characteristics related to journey to work, the characterisitcs were related to methods of transportation and how long their journey to work is in minutes. I also choose one other characterisitic which is related to what language they spoke, either English, French or another language than English and French. 
+
+```{r}
+corrplot(cor(neighbourhood[,2:30]),type="upper", order="hclust")
+```
+
+According to the correlation visualization plot there is a mix of positive and negative correlation between the variables. Variables related to higher journey to work time had a negative correlation with lower journey to work time. There was also negative correlations present in variables related to SES deprivation such as shorter journey times to work, being a visible minority, and private methods of transportation.
+
+**2) Principal Component Analysis**
+```{r}
+neighbourhood.1 <- princomp(neighbourhood[,2:30], cor = T)
+summary(neighbourhood.1)
+```
+
+According to the summary of the principal component analysis, the standard deviation start to get small after the second component. The cumulative proportion of the variance explained is acceptably high after the third component (71%). Further investigation using a screeplot is needed in order to find how many components are worth investigating.
+
+```{r}
+fviz_eig(neighbourhood.1)
+```
+
+According to the screeplot there ae elbows at 2 and 3. This suggests 2 or 3 components which is what we got from looking at the standard deviations and cumulative variance explained. I'm going to go with 2 components because the first two eigenvalues are bigger than one and the third is quite a bit smaller.
+
+```{r}
+neighbourhood.1$loadings
+```
+
+Component 1 depends negatively on variables related to SES deprivation, like no knowledge of English/French, low income, and little to no education. 
+
+Component 2 depends positively on income under $5000 and over $80000. It also depends positively on using private transportation vehicles (car, truck, or van) as a driver.
+
+```{r}
+fviz_pca_var(neighbourhood.1, 
+             col.var = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE # Avoid text overlapping
+             )
+```
+#variables close together are more correlated
+#variables closer to the circle are nbetter explained by the PCs
+#variables with high "cos2" are better explained
+
+According to the variable correlation transportation variables, specifically longer travel times (over 60 minutes) is related to SES deprivation variables, such as having little to no education and no knowledge of either English or French, and low income.
+
+High income, over $80,000, is related to knowing English and being a non-visible minority. Having an income over $80,000 has a high cos2 therefore the variable is better explained. Cos2 shows the importance of a principle component in the observation.
+
+Average income, between $50,000 and $79,000 is related to having a post secondary education, using public/sustainable methods of transportation. This is also related to having a shorter duration time to work (less than 15 minutes to 29 minutes).
+
+**3) Map of the individual coordinate scores**
+#observations close together are more similar
+#observations with high "cos2" are better explained by the two components
+```{r}
+fviz_pca_ind(neighbourhood.1,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+Based on my knowledge of Toronto neighbourhoods, the plot of observations demonstrates that cities that typically have higher incomes and less variables related to SES deprivation are on the right side of the plot. The cities that do not have a high percentage of immigrants/visible minorites plot higher on PC1 and PC2. 
+
+*PART 2: Factor Analysis and Social Deprivation*
+
+**1) Create a dataframe**
+```{r}
+library(readxl)
+SESdep <- read_excel("~/Desktop/SESdep.xlsx")
+SESdep
+```
+
+**2) Summary of data and investigation of correlation**
+```{r}
+summary(SESdep)
+```
+```{r}
+corrplot(cor(SESdep[,2:17]),type="upper", order="hclust")
+```
+
+According to the correlation visualization plot there are strong correlations between most of the SES deprivation variables. However, there is a notable negative correlation between the total average income and most of the other variables. This is most likely due to the fact that these variables are related to lower than average total income.
+
+**3) Perform a factor analysis and results**
+```{r}
+SESdep.fa <- factanal(SESdep[,2:17], factors = 3, scores = "regression", rotation = "none")
+print(SESdep.fa, digits = 2, cutoff = .4, sort = TRUE)
+```
+
+According to the cumulative var line at the bottom it says that most of the variability (69%) is explained by 3 factors. The blank loadings are cloe to 0, and can be ignored.
+
+Factor 1: This component loads mainly and positively on the variables that are not related to housing type, except for row house and apartment duplex, and total average income. 
+
+Factor 2: The component loads most heavily, positively, on apartment with less than 5 stories. When apartment_l5 is large, component 3 is large. 
+
+Factor 3: This component loads positively on having no education and negatively on use of public transit. It mainly loads onto having no education. 
+
+```{r}
+biplot(SESdep.fa$scores, SESdep.fa$loadings)
+```
+
+The biplot tells us how the variables are aligned with the axes. Apartment_l5, which is apartment with less than 5 stories, points straight up since it is the dominant part of factor 2 and not part of Factor 1 or 3 at all. 
+
+```{r}
+SESdep.vmax <- factanal(SESdep[,2:17], factors = 3, scores = "regression", rotation = "varimax")
+print(SESdep.vmax, digits = 2, cutoff = .4, sort = TRUE)
+```
+
+Again, according to the cumulative var line at the bottom it says that most of the variability (69%) is explained by 3 factors. There is a big difference in the factor loadings from unrotated factor analysis output, in the second factor. 
+
+Factor 1: Again this component loads mainly and positively on the variables that are not related to housing type, except for row house and apartment duplex. It loads negatively on the total income variable.
+
+Factor 2: This component loads positively on variables not related to housing type (except for row house), total income, and no knowledge of English or French. 
+
+Factor 3: This component loads positively on apartment_l5 and semi-detached house. It heavily loads onto apartment_l5.
+
+```{r}
+biplot(SESdep.vmax$scores, SESdep.vmax$loadings)
+```
+
+```{r}
+SESdep.pmax <- factanal(SESdep[,2:17], factors = 3, scores = "regression", rotation = "promax")
+print(SESdep.pmax, digits = 2, cutoff = .4, sort = TRUE)
+```
+
+This rotation explains less of the variance than the varimax rotation and the unrotated factor analysis output. This is expected as oblique factors explain less variance than the orthogonal ones.
+
+This rotation has helped to make clear which variables belong to which factor, compared to the principle component analysis.
+
+Factor 1: This component loads positively on variables unrelated to unemployment, use of public transit, and housing type (apartment_l5 and other single attached housing).
+
+Factor 2: This component loads positively on variables related unemployment, being an immigrant/visible minority, and use of public transit. These are variables that are heavily correlated with SES deprivation.
+
+Factor 3: Again this component loads positively on apartment_l5 and semi-detached house. It heavily loads onto apartment_l5.
+
+```{r}
+biplot(SESdep.pmax$scores, SESdep.pmax$loadings)
+```
+
+```{r}
+cor(SESdep.pmax$score)
+```
+
+

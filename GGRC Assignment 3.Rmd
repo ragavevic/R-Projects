@@ -1,0 +1,188 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+```{r}
+library(tidyverse)
+library(MASS)
+```
+
+**PART 1**
+
+```{r}
+library(readr)
+diabete <- read_csv("~/Downloads/diabetes.csv")
+diabete
+```
+```{r}
+summary(diabete)
+```
+
+Working with the dataset, neg means the patient does not have diabetes and pos means that the patient does have diabetes. 
+
+Create a variable in our dataframe called 'binDia' for binary diabetes, pos and neg. 
+```{r}
+diabete$binDia[diabete$diabetes == 'pos'] = 1 
+diabete$binDia[diabete$diabetes == 'neg'] = 0
+attach(diabete)
+```
+
+```{r}
+diabete.1 <- glm(binDia ~ pregnant + glucose + pressure + triceps + insulin + mass + pedigree + age, family = "binomial"(link = 'logit'), data = diabete)
+summary(diabete.1)
+```
+```{r}
+exp(coef(diabete.1))
+```
+```{r}
+exp(confint(diabete.1))
+```
+```{r}
+chisq<-diabete.1$null.deviance-diabete.1$deviance
+pchisq(chisq,1,lower.tail=FALSE)
+```
+
+```{r}
+diabete.2 <- stepAIC(diabete.1)
+```
+```{r}
+summary(diabete.2)
+```
+```{r}
+chisq<-diabete.2$null.deviance-diabete.2$deviance
+pchisq(chisq,1,lower.tail=FALSE)
+```
+
+```{r}
+exp(coef(diabete.2))
+```
+```{r}
+exp(confint(diabete.2))
+```
+
+```{r}
+anova(diabete.1, diabete.2, test = "Chisq")
+```
+```{r}
+ggplot(diabete, aes(x = diabetes, y = pregnant)) + geom_boxplot()
+```
+```{r}
+ggplot(diabete, aes(x = diabetes, y = age)) + geom_boxplot()
+```
+```{r}
+res <- residuals(diabete.1, type = "pearson")
+sum(res^2)
+```
+
+```{r}
+res <- residuals(diabete.2, type = "pearson")
+sum(res^2)
+```
+```{r}
+car::vif(diabete.2)
+```
+
+The reason why a logistic regression was chosen for this particular dataset is because the response variable, whether or not a patient has diabetes, is a categorical yes/no kind of variable rather than a quantitative numerical one. When you have this kind of response variable you want to use logistic regression. 
+
+ln(θ(x)/1-θ(x)) = -10.04 + 0.08216(pregnant) + 0.03827(glucose) - 0.001420(pressure) + 0.1122(triceps) - 0.0008253(insulin) + 0.07054(mass) + 1.141(pedigree) + 0.03395(age)
+
+Based on the summary of the original model with all of the independent variables only 3 variables have a significant relationship with the probability of having diabetes at the a = 0.10 level. Glucose has a P-value of 3.24e-11, mass has a P-value of 0.00989, and pedigree has a P-value of 0.00760. In order to measure the goodness-of-fit of the original model an analysis of deviance must be done. It should also be noted that these 3 variables have a positive slope, which means that as these variables increase the probability of having diabetes goes up as well. Based on the null deviance, which equals 498.10, and the residual deviance, which equals 344.02, it suggests that the created model is better than the null model. This is because the residual deviance is smaller than the null deviance. Since all the variables are not significant and some have negative slopes I would consider removing some of the variables from the model. 
+
+ln(θ(x)/1-θ(x)) = -9.99 + 0.083953(pregnant) + 0.036458(glucose) + 0.078139(mass) + 1.150913(pedigree) + 0.034360(age)
+
+Because there are insignificant variables in the model I considered removing some using the stepAIC function. The independent variables included in the new model are pregnant, glucose, mass, pedigree and age. However, only glucose, pedigree and age have significant P-values at the a = 0.10 level. The slopes of all the variables included in the model are positive, suggesting that there is an increase in the probability of having diabetes as one or all of these variables increase. The variables pregnant and age have significant slopes but do not have significant P-values. I am going to keep them in the model because once I take pregnant out the residual deviance of the model becomes higher than the original models. I also ran an ANOVA test to see which model is better, the original or new model, and based on the P-value which was 0.8341 both models are about the same so I decided to go with the smaller model. In analyzing the deviance to measure the goodness-of-fit for the model, the residual deviance, 344.89, was smaller than the null deviance, 498.10. This suggests that the new model is better than the null model with only includes the intercept. It should be noted that the residual deviance from the original model was smaller than the new model by 0.87. 
+
+When conducting an overall test of model fit using the deviances both models were close to 0. This means that there is a close to 0 percent chance that the null model is better than the logistic regression. However, the original model was a lot closer to 0 than the new model. 
+
+When testing for multicollinearity using the variance inflation factors I was able to find that the independent variables are not highly correlated with each other. 
+
+Based on the exponentiated coefficients we can see the effect of each variable on the probability of having diabetes. With a one unit increase in pregnancy the odds of having diabetes increases by a factor of 1.087578. Therefore, there is a 1.087578 times likely chance that the person has diabetes per pregnancy. With a one unit increase in glucose the odds of having diabetes increases by 1.037130. With a one unit increase in mass the odds of having diabetes increases by 1.081273. This means there is a 1.081273 times likely chance that the person has diabetes with each 1 unit increase in body mass index. With a one unit increase in pedigree the odds of having diabetes increases by 3.161077. This makes sense because people whos parents have diabetes have a high chance of also having diabetes. With a one unit increase of age the odds of having diabetes increases by 1.034957. This makes sense because the risk of having diabetes increases with age. 
+
+**PART 2**
+```{r}
+library(foreign)
+library(nnet)
+library(ggplot2)
+library(reshape2)
+```
+
+```{r}
+data("iris")
+iris
+```
+```{r}
+summary(iris)
+```
+```{r}
+iris$Species2 <- relevel(iris$Species, ref = "setosa")
+```
+```{r}
+iris.1 <- multinom(Species2 ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, data = iris)
+```
+```{r}
+summary(iris.1)
+```
+```{r}
+iris.2 <- step(iris.1, trace = 0)
+```
+```{r}
+iris.2 <- multinom(Species2 ~ Sepal.Width + Petal.Length + Petal.Width, data = iris)
+summary(iris.2)
+```
+```{r}
+anova(iris.2, iris.1)
+```
+
+Statistical tests for coefficients
+```{r}
+z <- summary(iris.2)$coefficients/summary(iris.2)$standard.errors
+z
+```
+```{r}
+p <- (1 - pnorm(abs(z), 0, 1)) * 2 # p-values for 2-tailed z-test.
+p
+```
+```{r}
+exp(coef(iris.2))
+```
+
+```{r}
+iris.3 <- multinom(Species2 ~ Sepal.Length + Sepal.Width +
+Petal.Length + Petal.Width + Sepal.Length * Sepal.Width + Sepal.Length * Petal.Length + Sepal.Length * Petal.Width, data = iris)
+```
+```{r}
+anova(iris.2, iris.3, test = "Chisq")
+```
+```{r}
+library(caret)
+training.samples <- iris$Species %>% 
+  createDataPartition(p = 0.8, list = FALSE)
+train.data  <- iris[training.samples, ]
+test.data <- iris[-training.samples, ]
+```
+```{r}
+predicted.classes <- iris.1 %>% predict(test.data)
+head(predicted.classes)
+mean(predicted.classes == test.data$Species)
+```
+```{r}
+predicted.class <- iris.2 %>% predict(test.data)
+head(predicted.class)
+mean(predicted.class == test.data$Species)
+```
+
+The reason why a multinomial model should be used to predict flower species from the other variables is because the categories of species are not in any kind of order.
+
+In order to test whether all the explanatory variables are needed in the model I used the R function step. The final output from steps tells us that we need the variables Sepal.Width, Petal.Length, and Petal.Width. In order to see which model is better I used ANOVA to compare the two models. The P-value, 0.505, is not small enough to be siginificant therefore I am going to go with the small model with 3 variables. Another model was run, iris.3, in order to check if there was any significant interactions with Sepal.Length. The P-value of the ANOVA, 0.858269, suggests that there were no significant interactions with Sepal.Length. Therefore, we can go ahead and remove it from the model. The residual deviance for the larger model with all 4 variables has a smaller residual deviance than the new model. The AIC for the new model, 29.26653, is smaller than the AIC for the original model, 31.89973. This means that we should go with the new model since it has the smallest AIC. By testing the model accuracy for both models I was able to fid that the model was good at predicting the different categories with a 97% accuracy.
+
+log(Pr(species=versicolor)Pr(species=setosa))=14.15646-17.32240(Sepal.Width)+14.09906(Petal.Length)-2.695628(Petal.Width)+ε
+
+log(Pr(species=virginica)Pr(species=setosa))=-36.44078-25.70717(Sepal.Width)+21.98210(Petal.Length)+18.765796(Petal.Width)+ε
+
+Using the logit coefficients relative to the reference category, setosa, to look at the odds of which species the plant is relative to the indicator of the flower. In terms of Sepal.Width and versicolor, the -17.32240 suggests that for a one unit increase in sepal width, the logit coefficient for versicolor relative to setosa will go down by -17.32240. For Sepal.Width and virginica, the -25.70717 suggests that for a one unit increase in sepal width, the logit coefficient for virginica relative to setosa will go down by -17.32240. It should be noted that sepal.width does not have a significant influence on the species probability. This is based on the findings in the partial dependence plots for Sepal.Width.
+
+In terms of Petal.Length and versicolor, the 14.09906 suggests that for a one unit increase in petal length, the logit coefficient for versicolor relative to setosa will go up by 14.09906. In terms of Petal.Length and virginica, the 21.98210 suggests that for a one unit increase in petal length, the logit coefficient for virginica relative to setosa will go up by 21.98210. This makes sense because petal length has an influence on class probabilities. Based on the partial dependence plot, as the petal length increases the probability of class increases for both virginica and versicolor while the probability of class decreases for setosa. 
+
+In terms of Petal.Width and versicolor, the -2.695628 suggests that for a one unit increase in petal width, the logit coefficient for versicolor relative to setosa will go down by -2.695628. In terms of petal width and virginica, the 18.765796 suggests that for a one unit increase in petal width, the logit coefficient for virginica relative to setosa will go up by 18.765796. This makes sense because petal width has an influece on class probabilities. Based on the partial dependence plot, as the petal width increases the probability of class increases for virginica and decreases for versicolor.

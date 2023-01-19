@@ -1,0 +1,26 @@
+#1
+bikesharingbyhour$season <- as.factor(bikesharingbyhour$season)
+bikesharingbyhour$yr <- as.factor(bikesharingbyhour$yr)
+bikesharingbyhour$mnth <- as.factor(bikesharingbyhour$mnth)
+bikesharingbyhour$hr <- as.factor(bikesharingbyhour$hr)
+bikesharingbyhour$holiday <- as.factor(bikesharingbyhour$holiday)
+bikesharingbyhour$weekday <- as.factor(bikesharingbyhour$weekday)
+bikesharingbyhour$workingday <- as.factor(bikesharingbyhour$workingday)
+bikesharingbyhour$weathersit <- as.factor(bikesharingbyhour$weathersit)
+str(bikesharingbyhour)
+#2
+inds <- sample(1:nrow(bikesharingbyhour), 0.80*nrow(bikesharingbyhour))
+tr_df <- bikesharingbyhour[inds,]
+ts_df <- bikesharingbyhour[-inds,]
+#3
+lm1 <- lm(cnt~ -instant -dteday - casual - registered + season + yr + mnth + hr + holiday + weekday + workingday + weathersit + temp + atemp + hum + windspeed , data = bikesharingbyhour)
+#4
+summary (lm1)
+- Based on the summary, the lowest p value is month
+- What this means is that it has a linear effect on the regression model
+#5
+preds <- predict(lm1, newdata = ts_df)
+rmse <- sqrt (mean(preds - ts_df$cnt)^2)
+print(rmse)
+[1] 2.158667
+- Based on this my model is +- accuracy of 2.158667

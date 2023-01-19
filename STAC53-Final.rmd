@@ -1,0 +1,202 @@
+```{r}
+library(tidyverse)
+library(mosaic)
+library(dplyr)
+library(survey)
+```
+
+#read the data into R
+```{r}
+LearnNewFun
+```
+```{r}
+LearnNewFun0 <- LearnNewFun %>%
+  mutate(sexs=ifelse(sexs==1,"Male","Female"))
+LearnNewFun0
+```
+#filter data by province of Alberta and remove invalid responses to the statement of interest
+```{r}
+LearnNewFun0 %>% 
+  filter(al_g02<6, dprov == 48)->LearnNewFun0
+LearnNewFun0
+```
+```{r}
+LearnNewFun0 %>% count(sexs)
+```
+1. Suppose that the target population is province of Alberta. 
+#what is the mean and SD of responses regarding learning new things is fun
+```{r}
+LearnNewFun0 %>% summarize(m=mean(al_g02), sd=sd(al_g02))
+```
+
+#what is the mean and SD of responses regarding learning new things is fun for male and for females
+```{r}
+LearnNewFun0 %>% group_by(sexs) %>%
+  summarize(m=mean(al_g02), sd=sd(al_g02))
+```
+2. 
+#divide the population into two sub-populations by males and females
+```{r}
+Female_Population <- LearnNewFun0[LearnNewFun0$sexs == "Female",]
+Male_Population <- LearnNewFun0[LearnNewFun0$sexs == "Male",]
+```
+
+#set your seed number
+```{r}
+set.seed(626)
+```
+
+#take a random sample of 100 from the female group
+```{r}
+Female_Sample <- Female_Population[sample(1:1078, 100),]
+Female_Sample$Pop.Size <- 1071
+```
+
+#take a random sample of 425 from the male group
+```{r}
+Male_Sample <- Male_Population[sample(1:1009, 425),]
+Male_Sample$Pop.Size <- 1000
+```
+
+```{r}
+sample_data <- rbind(Female_Sample, Male_Sample)
+attach(sample_data)
+```
+
+#estimated mean response
+```{r}
+favstats(al_g02)
+```
+
+#corresponding SE
+```{r}
+library(psych)
+describe(al_g02)
+```
+
+#estimated mean response for males and for females
+```{r}
+favstats(al_g02 ~ sexs)
+```
+#corresponding SE
+```{r}
+describeBy(al_g02, sexs)
+```
+
+3. 
+#report the 95% CI for the overall mean response 
+```{r}
+t.test(al_g02)
+```
+
+#difference in mean response between males and females
+```{r}
+t.test(al_g02 ~ sexs, var.equal = TRUE)
+```
+
+4. Give the estimated margin of error for each of the CI that you found 
+
+5. Correct the results by taking into account the population size. 
+#finite population correction 
+#recall that N = 2087
+```{r}
+N = 2087
+Total.Cases <- N
+Total.Cases
+```
+```{r}
+sample_data$Total.Cases <- Total.Cases
+Total.Cases
+```
+
+#we do fpc since we know the population size 
+```{r}
+srs.design <- svydesign(data = sample_data, id=~1, fpc=~Total.Cases)
+srs.design
+```
+
+a. estimated means of overall response and response for males and for females
+#estimate the population mean
+```{r}
+ybar <- svymean(~al_g02, srs.design)
+ybar
+```
+
+#domain means for each sex
+```{r}
+svyby(~al_g02, by = ~sexs, design = srs.design, FUN = svymean)
+```
+b. 95% CI for the overall mean response, and the difference in mean response between males and females
+#CI for population 
+```{r}
+confint(ybar, level = 0.95)
+```
+
+#difference in mean response between males and females
+
+c. estimated margin of errors
+
+6. Construct a stratified random sampling to improve your analysis. 
+```{r}
+detach(sample_data)
+attach(LearnNewFun0)
+```
+#population size by stratum 
+```{r}
+Nh = table(sexs)
+Nh
+```
+#population size
+```{r}
+N = nrow(LearnNewFun0)
+N
+```
+
+#report the allocated sample sizes for each sex group based on the 525 random sample of interest 
+```{r}
+n = 525
+```
+```{r}
+round((Nh/N)*n)
+```
+
+```{r}
+library(splitstackshape)
+set.seed(626)
+str.rs <- data.frame(stratified(LearnNewFun0, "sexs", c(Male = 254, Female = 271)))
+attach(str.rs)
+```
+```{r}
+detach(LearnNewFun0)
+```
+```{r}
+Stratified.RS <- str.rs %>% 
+  mutate(Pop.Size = ifelse(sexs == "Male", 254, 271),
+         Stratum = ifelse(sexs == "Male", 1, 2))
+attach(Stratified.RS)
+```
+```{r}
+str.design <- svydesign(id=~1, strata = ~Stratum, fpc=~Pop.Size, data = Stratified.RS)
+str.design
+```
+
+a. estimated means of overall response and response for males and for females and SE
+#estimate the population mean 
+```{r}
+ybar <- svymean(~al_g02, str.design)
+ybar
+```
+
+#domain means for each sex
+```{r}
+svyby(~al_g02, by = ~sexs, design = str.design, FUN = svymean)
+```
+b. 95% CI for the overall mean response, and the difference in mean response between males and females
+#CI for population 
+```{r}
+confint(ybar, level = 0.95)
+```
+
+#difference in mean response between males and females
+
+c. estimated margin of errors
